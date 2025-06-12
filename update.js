@@ -4,7 +4,7 @@ const port = process.env.PORT || 3000;
 
 app.get('/runTrigger', (req, res) => { 
     console.log('Code executed!');
-    res.send('Hello from Heroku! JS code executed.');
+    res.send('Hello JS code executed.');
 });
 
 app.listen(port, () => {
