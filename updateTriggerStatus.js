@@ -4,6 +4,9 @@ const axios = require('axios');
 const bodyParser = require('body-parser');
 const AdmZip = require('adm-zip');
 
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
 const app = express();
 app.use(bodyParser.json());
 
@@ -134,6 +137,3 @@ const API_VERSION = ''+apiVersion;
     });
   }
 });
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
