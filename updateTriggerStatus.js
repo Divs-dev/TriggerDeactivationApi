@@ -11,9 +11,9 @@ const app = express();
 app.use(bodyParser.json());
 
 
-const {
-  LOGIN_URL,
-} = process.env;
+//const {
+  //LOGIN_URL,
+//} = process.env;
  // Make sure this matches your org's version KS
 //const API_VERSION = '61.0'; // Make sure this matches your org's version
 app.post('/toggletrigger', async (req, res) => {
