@@ -4,10 +4,12 @@ const axios = require('axios');
 const bodyParser = require('body-parser');
 const AdmZip = require('adm-zip');
 
-const app = express(); // ✅ define app before using
+const app = express();
+const PORT = process.env.PORT || 3000;
+
 app.use(bodyParser.json());
 
-app.post('/runTrigger', async (req, res) => {
+app.post('/runTrigger', (req, res) => {
   const { apiVersion, orgUrl, sessionId, triggerApiName, status, bodyTrigger } = req.body;
   const API_VERSION = '' + apiVersion;
 
@@ -15,40 +17,40 @@ app.post('/runTrigger', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  try {
-    const accessToken = sessionId;
-    const instanceUrl = orgUrl;
-    console.log('✅ Logged in to Salesforce');
+  const accessToken = sessionId;
+  const instanceUrl = orgUrl;
 
-    // Step 1: Create ZIP with trigger files
-    const zip = new AdmZip();
+  console.log('✅ Logged in to Salesforce');
 
-    const triggerBody = '' + bodyTrigger;
-    zip.addFile(`triggers/${triggerApiName}.trigger`, Buffer.from(triggerBody));
+  // Create ZIP with trigger and metadata
+  const zip = new AdmZip();
 
-    const metaXml = `<?xml version="1.0" encoding="UTF-8"?>
+  zip.addFile(`triggers/${triggerApiName}.trigger`, Buffer.from(bodyTrigger));
+
+  const metaXml = `<?xml version="1.0" encoding="UTF-8"?>
 <ApexTrigger xmlns="http://soap.sforce.com/2006/04/metadata">
-    <status>${status}</status>
-    <apiVersion>${API_VERSION}</apiVersion>
+  <status>${status}</status>
+  <apiVersion>${API_VERSION}</apiVersion>
 </ApexTrigger>`;
-    zip.addFile(`triggers/${triggerApiName}.trigger-meta.xml`, Buffer.from(metaXml));
 
-    const packageXml = `<?xml version="1.0" encoding="UTF-8"?>
+  zip.addFile(`triggers/${triggerApiName}.trigger-meta.xml`, Buffer.from(metaXml));
+
+  const packageXml = `<?xml version="1.0" encoding="UTF-8"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
-    <types>
-        <members>${triggerApiName}</members>
-        <name>ApexTrigger</name>
-    </types>
-    <version>${API_VERSION}</version>
+  <types>
+    <members>${triggerApiName}</members>
+    <name>ApexTrigger</name>
+  </types>
+  <version>${API_VERSION}</version>
 </Package>`;
-    zip.addFile('package.xml', Buffer.from(packageXml));
 
-    const zipBuffer = zip.toBuffer();
-    console.log('📦 Metadata ZIP prepared');
+  zip.addFile('package.xml', Buffer.from(packageXml));
+  const zipBuffer = zip.toBuffer();
 
-    // Step 2: Deploy ZIP
-    const deployUrl = `${instanceUrl}/services/Soap/m/${API_VERSION}`;
-    const deployEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
+  console.log('📦 Metadata ZIP prepared');
+
+  const deployUrl = `${instanceUrl}/services/Soap/m/${API_VERSION}`;
+  const deployEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                   xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -71,20 +73,20 @@ app.post('/runTrigger', async (req, res) => {
   </soapenv:Body>
 </soapenv:Envelope>`;
 
-    const deployHeaders = {
-      'Content-Type': 'text/xml',
-      'SOAPAction': 'deploy',
-    };
+  const deployHeaders = {
+    'Content-Type': 'text/xml',
+    'SOAPAction': 'deploy',
+  };
 
-    const deployResponse = await axios.post(deployUrl, deployEnvelope, { headers: deployHeaders });
-    const deployIdMatch = deployResponse.data.match(/<id>(.*?)<\/id>/);
-    if (!deployIdMatch) throw new Error('Deployment ID not found');
+  axios.post(deployUrl, deployEnvelope, { headers: deployHeaders })
+    .then((deployResponse) => {
+      const match = deployResponse.data.match(/<id>(.*?)<\/id>/);
+      if (!match) throw new Error('Deployment ID not found');
 
-    const deployId = deployIdMatch[1];
-    console.log(`🚀 Deployment started: ID = ${deployId}`);
+      const deployId = match[1];
+      console.log(`🚀 Deployment started: ID = ${deployId}`);
 
-    // Step 3: Poll deployment status
-    const checkDeployEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
+      const checkDeployEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns="http://soap.sforce.com/2006/04/metadata">
   <soapenv:Header>
@@ -100,31 +102,37 @@ app.post('/runTrigger', async (req, res) => {
   </soapenv:Body>
 </soapenv:Envelope>`;
 
-    let done = false;
-    let pollCount = 0;
-    let finalResponse;
-    while (!done && pollCount < 10) {
-      const checkResponse = await axios.post(deployUrl, checkDeployEnvelope, { headers: deployHeaders });
-      finalResponse = checkResponse.data;
-      done = /<done>true<\/done>/.test(finalResponse);
+      const statusUrl = `${instanceUrl}/services/Soap/m/${API_VERSION}`;
+      let pollCount = 0;
 
-      if (!done) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        pollCount++;
-      }
-    }
+      const pollStatus = () => {
+        axios.post(statusUrl, checkDeployEnvelope, { headers: deployHeaders })
+          .then((checkResponse) => {
+            const responseData = checkResponse.data;
+            const done = /<done>true<\/done>/.test(responseData);
 
-    console.log('✅ Deployment completed');
-    return res.status(200).json({ success: true, response: finalResponse });
+            if (done || pollCount >= 10) {
+              console.log('✅ Deployment completed');
+              res.status(200).json({ success: true, response: responseData });
+            } else {
+              pollCount++;
+              setTimeout(pollStatus, 3000);
+            }
+          })
+          .catch((err) => {
+            console.error('❌ Error polling deployment status:', err?.response?.data || err.message);
+            res.status(500).json({ error: err?.response?.data || err.message });
+          });
+      };
 
-  } catch (err) {
-    console.error('❌ Error:', err?.response?.data || err.message || err.toString());
-    return res.status(500).json({ error: err?.response?.data || err.message || err.toString() });
-  }
+      pollStatus();
+    })
+    .catch((err) => {
+      console.error('❌ Deployment error:', err?.response?.data || err.message);
+      res.status(500).json({ error: err?.response?.data || err.message });
+    });
 });
 
-// ✅ Now safely start the server
-const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
