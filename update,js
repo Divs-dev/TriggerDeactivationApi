@@ -2,7 +2,7 @@ const express = require('express');
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.get('/api/runTrigger', (req, res) => {
+app.get('/runTrigger', (req, res) => {
     console.log('Code executed!');
     res.send('Hello from Heroku! JS code executed.');
 });
