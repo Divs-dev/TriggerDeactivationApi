@@ -13,7 +13,7 @@ const {
 } = process.env;
  // Make sure this matches your org's version KS
 //const API_VERSION = '61.0'; // Make sure this matches your org's version
-app.post('/api/toggletrigger', async (req, res) => {
+app.post('/toggletrigger', async (req, res) => {
   const { apiVersion, orgUrl,sessionId, triggerApiName, status,bodyTrigger } = req.body;
 const API_VERSION = ''+apiVersion;
   if (!apiVersion || !orgUrl || !sessionId || !triggerApiName || !status || !bodyTrigger) {
