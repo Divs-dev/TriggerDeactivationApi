@@ -1,1 +1,1 @@
-node updateTriggerStatus.js
+web: node updateTriggerStatus.js
