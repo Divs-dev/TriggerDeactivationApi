@@ -4,34 +4,26 @@ const axios = require('axios');
 const bodyParser = require('body-parser');
 const AdmZip = require('adm-zip');
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-
-const app = express();
+const app = express(); // ✅ define app before using
 app.use(bodyParser.json());
 
-
-//const {
-  //LOGIN_URL,
-//} = process.env;
- // Make sure this matches your org's version KS
-//const API_VERSION = '61.0'; // Make sure this matches your org's version
 app.post('/runTrigger', async (req, res) => {
-  const { apiVersion, orgUrl,sessionId, triggerApiName, status,bodyTrigger } = req.body;
-const API_VERSION = ''+apiVersion;
+  const { apiVersion, orgUrl, sessionId, triggerApiName, status, bodyTrigger } = req.body;
+  const API_VERSION = '' + apiVersion;
+
   if (!apiVersion || !orgUrl || !sessionId || !triggerApiName || !status || !bodyTrigger) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
-;
+
   try {
-    const accessToken = sessionId;//loginResponse.data.access_token;
-    const instanceUrl = orgUrl;//loginResponse.data.instance_url;
+    const accessToken = sessionId;
+    const instanceUrl = orgUrl;
     console.log('✅ Logged in to Salesforce');
 
-    // Step 2: Create ZIP file with metadata
+    // Step 1: Create ZIP with trigger files
     const zip = new AdmZip();
 
-    const triggerBody = ''+bodyTrigger;//`trigger ${triggerApiName} on Account (before insert) { System.debug('${status} deployment'); }`;
+    const triggerBody = '' + bodyTrigger;
     zip.addFile(`triggers/${triggerApiName}.trigger`, Buffer.from(triggerBody));
 
     const metaXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -54,7 +46,7 @@ const API_VERSION = ''+apiVersion;
     const zipBuffer = zip.toBuffer();
     console.log('📦 Metadata ZIP prepared');
 
-    // Step 3: Deploy ZIP
+    // Step 2: Deploy ZIP
     const deployUrl = `${instanceUrl}/services/Soap/m/${API_VERSION}`;
     const deployEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
@@ -91,7 +83,7 @@ const API_VERSION = ''+apiVersion;
     const deployId = deployIdMatch[1];
     console.log(`🚀 Deployment started: ID = ${deployId}`);
 
-    // Step 4: Poll deployment status
+    // Step 3: Poll deployment status
     const checkDeployEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                   xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -108,32 +100,31 @@ const API_VERSION = ''+apiVersion;
   </soapenv:Body>
 </soapenv:Envelope>`;
 
-    const statusUrl = `${instanceUrl}/services/Soap/m/${API_VERSION}`;
     let done = false;
     let pollCount = 0;
     let finalResponse;
-
     while (!done && pollCount < 10) {
-      const checkResponse = await axios.post(statusUrl, checkDeployEnvelope, {
-        headers: deployHeaders,
-      });
-
+      const checkResponse = await axios.post(deployUrl, checkDeployEnvelope, { headers: deployHeaders });
       finalResponse = checkResponse.data;
       done = /<done>true<\/done>/.test(finalResponse);
 
       if (!done) {
-        await new Promise((r) => setTimeout(r, 3000));
+        await new Promise((resolve) => setTimeout(resolve, 3000));
         pollCount++;
       }
     }
 
-    console.log('✅ Deployment completed:\n', finalResponse);
+    console.log('✅ Deployment completed');
     return res.status(200).json({ success: true, response: finalResponse });
 
   } catch (err) {
     console.error('❌ Error:', err?.response?.data || err.message || err.toString());
-    return res.status(500).json({
-      error: err?.response?.data || err.message || err.toString(),
-    });
+    return res.status(500).json({ error: err?.response?.data || err.message || err.toString() });
   }
+});
+
+// ✅ Now safely start the server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
