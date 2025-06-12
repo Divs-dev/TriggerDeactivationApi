@@ -1,1 +1,1 @@
-web: node update.js
+web: node index.js
